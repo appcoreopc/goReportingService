@@ -12,7 +12,7 @@ import (
 
 func main() {
 
-	var hostname = flag.String("h", "localhost", "help message for flagname")
+	var hostname = flag.String("h", "localhost:9006/echo", "help message for flagname")
 
 	flag.Parse()
 
