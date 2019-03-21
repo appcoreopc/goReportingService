@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,9 +10,43 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func BasicRestHandler(w http.ResponseWriter, r *http.Request) {
+type ReportRequest struct {
+	ReportType  string
+	ReportName  string
+	RequestedBy string
+}
 
-	w.Write([]byte("Reporting!\n"))
+type ReportStatus struct {
+	ReportName string
+	Status     string
+}
+
+var statusChannel = make(chan *ReportStatus, 2)
+var clients = make(map[*websocket.Conn]bool)
+
+func createReportRequest(w http.ResponseWriter, r *http.Request) {
+
+	var reportReq ReportRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&reportReq); err != nil {
+		log.Printf("ERROR: %s", err)
+		http.Error(w, "Bad request", http.StatusTeapot)
+		return
+	}
+
+	fmt.Println("getting report status from rest request")
+
+	defer r.Body.Close()
+
+	statusReport := ReportStatus{ReportName: reportReq.ReportName, Status: "Running"}
+
+	UpdateReportStatus(&statusReport)
+
+}
+
+func UpdateReportStatus(status *ReportStatus) {
+
+	statusChannel <- status
 }
 
 var upgrader = websocket.Upgrader{
@@ -20,37 +55,51 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func echo(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("echo echo hit!")
+func handleReportStatus(w http.ResponseWriter, r *http.Request) {
+
+	fmt.Println("status hit!")
+
 	c, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
-		log.Print("upgrade:", err)
-		return
+		fmt.Println(err)
 	}
-	defer c.Close()
-	for {
-		mt, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("recv: %s", message)
-		err = c.WriteMessage(mt, message)
-		if err != nil {
-			log.Println("write:", err)
-			break
-		}
-	}
+
+	clients[c] = true
+
+	fmt.Println(clients)
 }
 
 func main() {
 	r := mux.NewRouter()
 	// Routes consist of a path and a handler function.
-	r.HandleFunc("/report", BasicRestHandler)
-	r.HandleFunc("/echo", echo)
+	r.HandleFunc("/report", createReportRequest).Methods("POST")
+	r.HandleFunc("/status", handleReportStatus)
+
+	go ListenToIncomingStatus()
 
 	log.Println("Serving services on port 9006")
 	// Bind to a port and pass our router in
 	log.Fatal(http.ListenAndServe(":9006", r))
+
+}
+
+func ListenToIncomingStatus() {
+
+	fmt.Println("listening to incoming update from app")
+	for {
+
+		status := <-statusChannel
+		fmt.Println("we're getting status")
+		fmt.Println(status.Status)
+		fmt.Println(status.ReportName)
+
+		for c := range clients {
+
+			err := c.WriteMessage(websocket.TextMessage, []byte(status.ReportName))
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+	}
 }
