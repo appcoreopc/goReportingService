@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/appcoreopc/reportingService/services"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/optiopay/kafka"
+	"github.com/optiopay/kafka/proto"
 )
 
 type ReportRequest struct {
@@ -70,7 +74,25 @@ func handleReportStatus(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(clients)
 }
 
+const (
+	topic     = "test"
+	partition = 0
+)
+
+var kafkaAddrs = []string{"localhost:9092", "localhost:9093"}
+
 func main() {
+
+	msgSvc := services.MessagingService{}
+
+	msgSvc.Init(kafkaAddrs, "test-client", "test")
+
+	go msgSvc.Subscribe()
+
+	time.Sleep(2000)
+
+	go msgSvc.Send("testintetest")
+
 	r := mux.NewRouter()
 	// Routes consist of a path and a handler function.
 	r.HandleFunc("/report", createReportRequest).Methods("POST")
@@ -90,7 +112,6 @@ func ListenToIncomingStatus() {
 	for {
 
 		status := <-statusChannel
-		fmt.Println("we're getting status")
 		fmt.Println(status.Status)
 		fmt.Println(status.ReportName)
 
@@ -102,4 +123,38 @@ func ListenToIncomingStatus() {
 			}
 		}
 	}
+}
+
+func printConsumed(broker kafka.Client) {
+	conf := kafka.NewConsumerConf(topic, partition)
+	conf.StartOffset = kafka.StartOffsetNewest
+	consumer, err := broker.Consumer(conf)
+	if err != nil {
+		log.Fatalf("cannot create kafka consumer for %s:%d: %s", topic, partition, err)
+	}
+
+	for {
+		msg, err := consumer.Consume()
+		if err != nil {
+			if err != kafka.ErrNoData {
+				log.Printf("cannot consume %q topic message: %s", topic, err)
+			}
+			break
+		}
+		log.Printf("message %d: %s", msg.Offset, msg.Value)
+	}
+	log.Print("consumer quit")
+}
+
+func sendMessage(broker kafka.Client) {
+
+	fmt.Println("will be sending out messagess...." + time.Now().String())
+	time.Sleep(2000)
+	producer := broker.Producer(kafka.NewProducerConf())
+
+	msg := &proto.Message{Value: []byte("hello world")}
+	if _, err := producer.Produce(topic, partition, msg); err != nil {
+		log.Fatalf("cannot produce message to %s:%d: %s", topic, partition, err)
+	}
+
 }
