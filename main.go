@@ -10,8 +10,6 @@ import (
 	"github.com/appcoreopc/reportingService/services"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/optiopay/kafka"
-	"github.com/optiopay/kafka/proto"
 )
 
 type ReportRequest struct {
@@ -79,19 +77,23 @@ const (
 	partition = 0
 )
 
-var kafkaAddrs = []string{"localhost:9092", "localhost:9093"}
+var kafkaAddrs = []string{"localhost:9092"}
 
 func main() {
 
-	msgSvc := services.MessagingService{}
+	msgSvc := services.SegmentIOService{}
 
-	msgSvc.Init(kafkaAddrs, "test-client", "test")
+	msgSvc.Init(kafkaAddrs, "test")
 
 	go msgSvc.Subscribe()
 
 	time.Sleep(2000)
 
 	go msgSvc.Send("testintetest")
+
+	time.Sleep(2000)
+
+	go msgSvc.Send("testintetest------------------------")
 
 	r := mux.NewRouter()
 	// Routes consist of a path and a handler function.
@@ -123,38 +125,4 @@ func ListenToIncomingStatus() {
 			}
 		}
 	}
-}
-
-func printConsumed(broker kafka.Client) {
-	conf := kafka.NewConsumerConf(topic, partition)
-	conf.StartOffset = kafka.StartOffsetNewest
-	consumer, err := broker.Consumer(conf)
-	if err != nil {
-		log.Fatalf("cannot create kafka consumer for %s:%d: %s", topic, partition, err)
-	}
-
-	for {
-		msg, err := consumer.Consume()
-		if err != nil {
-			if err != kafka.ErrNoData {
-				log.Printf("cannot consume %q topic message: %s", topic, err)
-			}
-			break
-		}
-		log.Printf("message %d: %s", msg.Offset, msg.Value)
-	}
-	log.Print("consumer quit")
-}
-
-func sendMessage(broker kafka.Client) {
-
-	fmt.Println("will be sending out messagess...." + time.Now().String())
-	time.Sleep(2000)
-	producer := broker.Producer(kafka.NewProducerConf())
-
-	msg := &proto.Message{Value: []byte("hello world")}
-	if _, err := producer.Produce(topic, partition, msg); err != nil {
-		log.Fatalf("cannot produce message to %s:%d: %s", topic, partition, err)
-	}
-
 }
