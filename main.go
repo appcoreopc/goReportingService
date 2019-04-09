@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/appcoreopc/reportingService/services"
 	"github.com/gorilla/mux"
@@ -81,19 +81,17 @@ var kafkaAddrs = []string{"localhost:9092"}
 
 func main() {
 
+	var topicName string
+
+	flag.StringVar(&topicName, "t", "test", "provide target topic name.")
+
+	flag.Parse()
+
 	msgSvc := services.SegmentIOService{}
 
-	msgSvc.Init(kafkaAddrs, "test")
+	msgSvc.Init(kafkaAddrs, topicName)
 
 	go msgSvc.Subscribe()
-
-	time.Sleep(2000)
-
-	go msgSvc.Send("testintetest")
-
-	time.Sleep(2000)
-
-	go msgSvc.Send("testintetest------------------------")
 
 	r := mux.NewRouter()
 	// Routes consist of a path and a handler function.
@@ -105,7 +103,6 @@ func main() {
 	log.Println("Serving services on port 9006")
 	// Bind to a port and pass our router in
 	log.Fatal(http.ListenAndServe(":9006", r))
-
 }
 
 func ListenToIncomingStatus() {
